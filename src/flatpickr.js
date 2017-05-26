@@ -281,6 +281,8 @@ function Flatpickr(element, config) {
 			self.monthNav.addEventListener("wheel", e => e.preventDefault());
 			bind(self.monthNav, "wheel", debounce(onMonthNavScroll, 10));
 			bind(self.monthNav, "mousedown", onClick(onMonthNavClick));
+			if (self.config.quickDays)
+				bind(self.dayPickers, "mousedown", onClick(selectDate));
 
 			bind(self.monthNav, ["keyup", "increment"], onYearInput);
 			bind(self.daysContainer, "mousedown", onClick(selectDate));
@@ -447,6 +449,8 @@ function Flatpickr(element, config) {
 		self.calendarContainer.tabIndex = -1;
 
 		if (!self.config.noCalendar) {
+			if (self.config.quickDays) fragment.appendChild(buildQuickDayPickers());
+
 			fragment.appendChild(buildMonthNav());
 			self.innerContainer = createElement("div", "flatpickr-innerContainer")
 
@@ -721,6 +725,40 @@ function Flatpickr(element, config) {
 	function clearNode(node) {
 		while (node.firstChild)
 			node.removeChild(node.firstChild);
+	}
+
+	function buildQuickDayPickers() {
+		self.dayPickers = createElement("div", "flatpickr-quickDays");
+
+		if (self.config.mode === "range") {
+			let month = new Date();
+			month.setMonth(month.getMonth() - 1);
+			self.lastMonth = createElement("span", "flatpickr-quickDay");
+			self.lastMonth.dateObj = [new Date(month), new Date()];
+			self.lastMonth.innerText = "Last month";
+			self.dayPickers.appendChild(self.lastMonth);
+
+			let week = new Date();
+			week.setDate(week.getDate() - 7);
+			self.lastWeek = createElement("span", "flatpickr-quickDay");
+			self.lastWeek.dateObj = [new Date(week), new Date()];
+			self.lastWeek.innerText = "Last 7 days";
+			self.dayPickers.appendChild(self.lastWeek);
+		}
+
+		let yesterday = new Date();
+		yesterday.setDate(yesterday.getDate() - 1);
+		self.yesterday = createElement("span", "flatpickr-quickDay");
+		self.yesterday.dateObj = new Date(yesterday);
+		self.yesterday.innerText = "Yesterday";
+		self.dayPickers.appendChild(self.yesterday);
+
+		self.today = createElement("span", "flatpickr-quickDay");
+		self.today.dateObj = new Date();
+		self.today.innerText = "Today";
+		self.dayPickers.appendChild(self.today);
+
+		return self.dayPickers;
 	}
 
 	function buildMonthNav() {
@@ -1418,7 +1456,7 @@ function Flatpickr(element, config) {
 
 	function parseConfig() {
 		let boolOpts = [
-			"wrap", "weekNumbers", "allowInput", "clickOpens", "time_24hr", "enableTime", "noCalendar", "altInput", "shorthandCurrentMonth", "inline", "static", "enableSeconds", "disableMobile"
+			"wrap", "weekNumbers", "quickDays", "allowInput", "clickOpens", "time_24hr", "enableTime", "noCalendar", "altInput", "shorthandCurrentMonth", "inline", "static", "enableSeconds", "disableMobile"
 		];
 
 		let hooks = [
@@ -1577,15 +1615,16 @@ function Flatpickr(element, config) {
 		e.stopPropagation();
 
 		if (
-			!e.target.classList.contains("flatpickr-day") ||
+			(!e.target.classList.contains("flatpickr-day") && !e.target.classList.contains("flatpickr-quickDay")) ||
 			e.target.classList.contains("disabled") ||
 			e.target.classList.contains("notAllowed")
 		)
 			return;
 
-		const selectedDate
-			= self.latestSelectedDateObj
-			= new Date(e.target.dateObj.getTime());
+		const selectedDate = Array.isArray(e.target.dateObj) ?
+			new Date(e.target.dateObj[0].getTime()) : new Date(e.target.dateObj.getTime());
+
+		self.latestSelectedDateObj = selectedDate;
 
 		const shouldChangeMonth = selectedDate.getMonth() !== self.currentMonth
 			&& self.config.mode !== "range";
@@ -1605,14 +1644,24 @@ function Flatpickr(element, config) {
 		}
 
 		else if (self.config.mode === "range") {
-			if (self.selectedDates.length === 2)
+			if (e.target.classList.contains("flatpickr-quickDay")) {
+				const selectedDateTo = Array.isArray(e.target.dateObj) ?
+					new Date(e.target.dateObj[1].getTime()) : selectedDate;
 				self.clear();
+				self.selectedDates.push(selectedDate);
+				self.selectedDates.push(selectedDateTo);
+				self.latestSelectedDateObj = selectedDateTo;
+			}
+			else {
+				if (self.selectedDates.length === 2)
+					self.clear();
 
-			self.selectedDates.push(selectedDate);
+				self.selectedDates.push(selectedDate);
 
-			// unless selecting same date twice, sort ascendingly
-			if (compareDates(selectedDate, self.selectedDates[0], true) !== 0)
-				self.selectedDates.sort((a,b) => a.getTime() - b.getTime());
+				// unless selecting same date twice, sort ascendingly
+				if (compareDates(selectedDate, self.selectedDates[0], true) !== 0)
+					self.selectedDates.sort((a,b) => a.getTime() - b.getTime());
+			}
 		}
 
 		setHoursFromInputs();
@@ -2531,6 +2580,9 @@ flatpickr.defaultConfig = Flatpickr.defaultConfig = {
 
 	// enables week numbers
 	weekNumbers: false,
+
+	// enable `Today` and `Yesterday` buttons
+	quickDays: false,
 
 	// allow manual datetime input
 	allowInput: false,
